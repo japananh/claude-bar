@@ -1,0 +1,23 @@
+# Build outputs
+release/
+backend/bin/
+widget/.build/
+widget/.swiftpm/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store
+
+# Go
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp

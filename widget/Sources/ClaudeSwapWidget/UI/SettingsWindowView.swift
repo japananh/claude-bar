@@ -1,0 +1,387 @@
+import SwiftUI
+
+struct SettingsWindowView: View {
+    @ObservedObject private var settings = AppSettings.shared
+    @EnvironmentObject var store: AppStore
+    @EnvironmentObject var loginCoordinator: LoginCoordinator
+    @EnvironmentObject var verifyCoordinator: VerifyCoordinator
+    @EnvironmentObject var webFallback: WebFallbackCoordinator
+    @State private var axGranted = IDEReloader.isAccessibilityGranted
+    @State private var ideTestResult: String = ""
+    @State private var ideTestRunning = false
+
+    var body: some View {
+        TabView {
+            accountsTab.tabItem { Label("Accounts", systemImage: "person.2") }
+            generalTab.tabItem { Label("General", systemImage: "gearshape") }
+            autoSwapTab.tabItem { Label("Auto-swap", systemImage: "arrow.triangle.2.circlepath") }
+            diagnosticsTab.tabItem { Label("Diagnostics", systemImage: "stethoscope") }
+            aboutTab.tabItem { Label("About", systemImage: "info.circle") }
+        }
+        .frame(width: 500, height: 420)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            axGranted = IDEReloader.isAccessibilityGranted
+        }
+    }
+
+    // MARK: - Accounts tab
+
+    private var accountsTab: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let snap = store.snapshot, !snap.accounts.isEmpty {
+                VStack(spacing: 2) {
+                    ForEach(snap.accounts) { acc in
+                        accountManageRow(acc)
+                    }
+                }
+            } else {
+                Text("No accounts added yet.")
+                    .foregroundColor(.secondary).font(.callout)
+            }
+            Divider()
+            Button {
+                loginCoordinator.begin()
+            } label: {
+                Label("Add account", systemImage: "plus.circle.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            Spacer()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func accountManageRow(_ acc: AccountViewDTO) -> some View {
+        HStack(spacing: 10) {
+            AvatarView(
+                initial: acc.account.initial,
+                seed: acc.account.email + (acc.account.organizationUuid ?? ""),
+                size: 28
+            )
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(acc.account.displayName).font(.system(size: 13, weight: .medium))
+                    if acc.isActive {
+                        Text("ACTIVE")
+                            .font(.system(size: 9, weight: .bold)).tracking(0.4)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.green).clipShape(Capsule())
+                    }
+                }
+                Text(acc.account.email).font(.caption).foregroundColor(.secondary)
+            }
+            Spacer()
+            if !acc.isActive {
+                Button(role: .destructive) {
+                    Task { await store.remove(acc.account.number) }
+                } label: {
+                    Image(systemName: "trash").font(.system(size: 12))
+                }
+                .buttonStyle(.borderless)
+                .help("Remove account")
+            }
+        }
+        .padding(.vertical, 6).padding(.horizontal, 10)
+        .background(acc.isActive ? Color.green.opacity(0.07) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    // MARK: - General tab
+
+    private var generalTab: some View {
+        SettingsPage {
+            SettingsGroup("Menu bar") {
+                Picker("Display style", selection: $settings.menuBarStyle) {
+                    ForEach(MenuBarStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                .frame(maxWidth: 360, alignment: .leading)
+            }
+
+            SettingsGroup("IDE integration", subtitle: "Optional helpers for keeping editors and terminal sessions aligned after a swap.") {
+                Toggle(isOn: $settings.autoReloadIDEAfterSwap) {
+                    SettingsToggleLabel(
+                        title: "Auto-reload IDE after swap",
+                        detail: "Reloads VSCode, Cursor, and Windsurf windows so extensions pick up the new account."
+                    )
+                }
+                if settings.autoReloadIDEAfterSwap {
+                    accessibilityStatus
+                }
+
+                Divider()
+
+                Toggle(isOn: $settings.autoKillCLIAfterSwap) {
+                    SettingsToggleLabel(
+                        title: "Auto-kill CLI sessions after swap",
+                        detail: "Sends SIGINT to every claude CLI process so claude-watch can auto-restart."
+                    )
+                }
+                if settings.autoKillCLIAfterSwap {
+                    commandRow(label: "Install claude-watch once", command: installCmd)
+                    commandRow(label: "Make claude auto-restart everywhere", command: aliasCmd)
+                    Text("Open a new terminal tab after running the alias command.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            SettingsGroup("Adaptive refresh", subtitle: "The widget refreshes faster when the active 5-hour usage approaches the auto-swap threshold.") {
+                refreshStepper(
+                    title: "Normal refresh",
+                    value: $settings.refreshIntervalSec,
+                    range: 30...900,
+                    step: 30,
+                    detail: "When 5h usage is below \(settings.adaptiveHighThresholdPct)%"
+                )
+                refreshStepper(
+                    title: "Fast refresh",
+                    value: $settings.refreshIntervalHighSec,
+                    range: 30...600,
+                    step: 30,
+                    detail: "When 5h usage is \(settings.adaptiveHighThresholdPct)% or higher"
+                )
+                Stepper(value: $settings.adaptiveHighThresholdPct, in: 50...95, step: 5) {
+                    valueRow(title: "Fast refresh starts at", value: "\(settings.adaptiveHighThresholdPct)%")
+                }
+            }
+        }
+    }
+
+    private var autoSwapTab: some View {
+        SettingsPage {
+            SettingsGroup("Auto-swap", subtitle: "Automatically move to a lower-usage account after the active 5-hour quota reaches your threshold.") {
+                Toggle("Enable auto-swap", isOn: $settings.autoSwapEnabled)
+                HStack(spacing: 12) {
+                    Text("Threshold")
+                        .frame(width: 120, alignment: .leading)
+                    Slider(value: Binding(
+                        get: { Double(settings.thresholdPct) },
+                        set: { settings.thresholdPct = Int($0) }
+                    ), in: 1...100, step: 1)
+                    Text("\(settings.thresholdPct)%")
+                        .monospacedDigit()
+                        .frame(width: 48, alignment: .trailing)
+                }
+                Stepper(value: $settings.sessionPollIntervalSec, in: 2...30) {
+                    valueRow(title: "Check Claude sessions every", value: "\(settings.sessionPollIntervalSec)s")
+                }
+            }
+
+            SettingsGroup("How it works") {
+                Text("Trigger is based on the 5-hour quota only. When the active account crosses the threshold, the widget waits until you exit claude, then swaps to the inactive account with the lowest 5-hour usage.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("The widget never kills running claude processes. The 7-day window is shown in the dropdown for reference but does not affect auto-swap.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var diagnosticsTab: some View {
+        SettingsPage {
+            SettingsGroup("IDE reload test", subtitle: "Runs the full reload flow now so you can see exactly what happens.") {
+                Button {
+                    ideTestRunning = true
+                    ideTestResult = ""
+                    Task {
+                        ideTestResult = await IDEReloader.diagnose()
+                        ideTestRunning = false
+                    }
+                } label: {
+                    Label(ideTestRunning ? "Testing..." : "Test IDE Reload", systemImage: "play.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(ideTestRunning)
+
+                if !ideTestResult.isEmpty {
+                    Text(ideTestResult)
+                        .font(.system(size: 11, design: .monospaced))
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+
+            SettingsGroup("Account verification", subtitle: "Checks the keychain backup, OAuth refresh, and Anthropic usage API for every managed account.") {
+                Button {
+                    verifyCoordinator.begin()
+                } label: {
+                    Label("Verify all accounts", systemImage: "checkmark.shield")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            SettingsGroup("Web fallback", subtitle: "Use an embedded claude.ai browser when the usage API is rate-limited by Cloudflare WAF.") {
+                HStack(spacing: 8) {
+                    if webFallback.isConnected {
+                        badge("CONNECTED", color: .green)
+                    } else {
+                        badge("NOT SIGNED IN", color: .secondary)
+                    }
+                    Spacer()
+                }
+                Text("Sign in once. The session persists across launches and can be used as a fallback source for quota information.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button {
+                        webFallback.open()
+                    } label: {
+                        Label(webFallback.isConnected ? "Open claude.ai" : "Connect to claude.ai",
+                              systemImage: "globe")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    if webFallback.isConnected {
+                        Button("Disconnect", role: .destructive) {
+                            Task { await webFallback.disconnect() }
+                        }
+                    }
+                    Spacer()
+                }
+                if let txt = webFallback.lastScrapedQuotaText {
+                    Label("Last scrape: \(txt)", systemImage: "doc.text.magnifyingglass")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+    }
+
+    private var aboutTab: some View {
+        SettingsPage {
+            SettingsGroup("Claude Bar") {
+                Text("A menu-bar profile switcher for Claude Code accounts.")
+                    .foregroundColor(.secondary)
+                Divider()
+                Text("Backend: csw (Go)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private var accessibilityStatus: some View {
+        HStack(spacing: 10) {
+            if axGranted {
+                Label("Accessibility granted", systemImage: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.caption)
+            } else {
+                Label("Accessibility required for window reload", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+                Spacer()
+                Button("Grant Access") {
+                    IDEReloader.requestAccessibilityPermission()
+                    NSWorkspace.shared.open(
+                        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+                    )
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        axGranted = IDEReloader.isAccessibilityGranted
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        }
+        .padding(.leading, 4)
+    }
+
+    private func refreshStepper(
+        title: String,
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        step: Int,
+        detail: String
+    ) -> some View {
+        Stepper(value: value, in: range, step: step) {
+            VStack(alignment: .leading, spacing: 2) {
+                valueRow(title: title, value: formatSec(value.wrappedValue))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func valueRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value)
+                .monospacedDigit()
+                .fontWeight(.medium)
+                .foregroundColor(.accentColor)
+        }
+    }
+
+    private func commandRow(label: String, command: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            HStack(spacing: 6) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(command)
+                        .font(.system(size: 10, design: .monospaced))
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .help("Copy")
+            }
+        }
+    }
+
+    private var installCmd: String {
+        let support = ("~/Library/Application Support/claude-swap-widget/claude-watch.sh" as NSString)
+            .expandingTildeInPath
+        let binDir = FileManager.default.fileExists(atPath: "/opt/homebrew/bin")
+            ? "/opt/homebrew/bin" : "/usr/local/bin"
+        return "chmod +x \"\(support)\" && ln -sf \"\(support)\" \(binDir)/claude-watch"
+    }
+
+    private var aliasCmd: String {
+        "echo 'alias claude=\"claude-watch\"' >> ~/.zshrc && source ~/.zshrc"
+    }
+
+    private func formatSec(_ seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = seconds / 60
+        let remainder = seconds % 60
+        if remainder == 0 { return "\(minutes)m" }
+        return "\(minutes)m \(remainder)s"
+    }
+
+    private func badge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .bold))
+            .tracking(0.5)
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color)
+            .clipShape(Capsule())
+    }
+}
+
