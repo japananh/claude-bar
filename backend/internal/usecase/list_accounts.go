@@ -12,10 +12,11 @@ import (
 
 // AccountView is one row in the UI list.
 type AccountView struct {
-	Account  *domain.Account `json:"account"`
-	IsActive bool            `json:"isActive"`
-	Usage    *domain.Usage   `json:"usage,omitempty"`
-	Error    string          `json:"error,omitempty"`
+	Account          *domain.Account `json:"account"`
+	IsActive         bool            `json:"isActive"`
+	Usage            *domain.Usage   `json:"usage,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	SubscriptionType string          `json:"subscriptionType,omitempty"`
 }
 
 // ListAccountsResult is what the UI consumes.
@@ -104,6 +105,7 @@ func (s *Service) fillUsage(ctx context.Context, v *AccountView) {
 		s.fallbackToCache(v, err)
 		return
 	}
+	v.SubscriptionType = payload.SubscriptionType
 	access := payload.AccessToken
 
 	// Inactive + token expired -> refresh, persist back to backup.
