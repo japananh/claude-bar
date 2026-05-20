@@ -32,6 +32,8 @@ final class AppSettings: ObservableObject {
     /// a swap. Useful with the `claude-watch` wrapper script which auto-restarts.
     @AppStorage("autoKillCLIAfterSwap") var autoKillCLIAfterSwap: Bool = false
     @AppStorage("widgetTheme") var widgetTheme: WidgetTheme = .light
+    /// Day (yyyy-MM-dd) of the last successful daily token refresh.
+    @AppStorage("lastDailyTokenRefreshDay") var lastDailyTokenRefreshDay: String = ""
 }
 
 enum WidgetTheme: String, CaseIterable, Identifiable {

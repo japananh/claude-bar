@@ -36,6 +36,8 @@ final class AppStore: ObservableObject {
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in
             await self?.refreshNow()
+            // Daily token refresh — runs once per calendar day on startup.
+            await self?.dailyTokenRefreshIfNeeded()
             while !Task.isCancelled {
                 guard let self else { return }
                 let secs = self.nextRefreshIntervalSec()
@@ -44,6 +46,24 @@ final class AppStore: ObservableObject {
             }
         }
         autoSwap.start()
+    }
+
+    private func dailyTokenRefreshIfNeeded() async {
+        let today = todayString()
+        guard settings.lastDailyTokenRefreshDay != today else { return }
+        do {
+            try await client.refreshAllTokens()
+            settings.lastDailyTokenRefreshDay = today
+        } catch {
+            // Non-fatal: log and skip — will retry next launch
+            print("[AppStore] Daily token refresh failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func todayString() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
     }
 
     /// Computes the next sleep duration based on the most recent active 5h%.

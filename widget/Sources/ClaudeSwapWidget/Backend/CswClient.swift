@@ -72,6 +72,10 @@ actor CswClient {
         try await run(["verify", "--json"], decode: VerificationReportDTO.self)
     }
 
+    func refreshAllTokens() async throws {
+        _ = try await runRaw(["refresh-tokens", "--json"])
+    }
+
     private func run<T: Decodable>(_ args: [String], decode: T.Type) async throws -> T {
         let raw = try await runRaw(args)
         do {

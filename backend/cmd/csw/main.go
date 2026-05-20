@@ -44,6 +44,8 @@ func main() {
 		err = runActive(ctx, svc, args)
 	case "verify":
 		err = runVerify(ctx, svc, args)
+	case "refresh-tokens":
+		err = runRefreshTokens(ctx, svc, args)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -69,6 +71,7 @@ Commands:
   remove <num>            Remove an account (must not be active)
   sessions                Report live Claude Code sessions
   verify                  Verify every account is swap-ready
+  refresh-tokens          Refresh OAuth tokens for all inactive accounts
   help                    Show this help
 
 All commands accept --json for machine-readable output.`)
