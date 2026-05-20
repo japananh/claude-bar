@@ -46,6 +46,8 @@ func main() {
 		err = runVerify(ctx, svc, args)
 	case "refresh-tokens":
 		err = runRefreshTokens(ctx, svc, args)
+	case "cloud":
+		err = runCloud(ctx, svc, args)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -72,6 +74,10 @@ Commands:
   sessions                Report live Claude Code sessions
   verify                  Verify every account is swap-ready
   refresh-tokens          Refresh OAuth tokens for all inactive accounts
+  cloud status            Show iCloud Drive bundle status
+  cloud push              Encrypt and push accounts to iCloud Drive
+  cloud pull              Restore accounts from iCloud Drive bundle
+  cloud forget            Delete the bundle from iCloud Drive
   help                    Show this help
 
 All commands accept --json for machine-readable output.`)

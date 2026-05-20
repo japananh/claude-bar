@@ -11,6 +11,7 @@ struct ClaudeSwapWidgetApp: App {
     @StateObject private var loginCoordinator = LoginCoordinator()
     @StateObject private var verifyCoordinator = VerifyCoordinator()
     @StateObject private var webFallback = WebFallbackCoordinator()
+    @StateObject private var cloudSync = CloudSyncCoordinator(client: CswClient())
     @ObservedObject private var settings = AppSettings.shared
     @Environment(\.openSettings) private var openSettings
 
@@ -26,12 +27,16 @@ struct ClaudeSwapWidgetApp: App {
                 .environmentObject(loginCoordinator)
                 .environmentObject(verifyCoordinator)
                 .environmentObject(webFallback)
+                .environmentObject(cloudSync)
                 .frame(width: 400)
                 .task {
                     loginCoordinator.attach(store: store)
                     verifyCoordinator.attach(store: store)
                     webFallback.attach(store: store)
+                    store.cloudSync = cloudSync
                     store.start()
+                    await cloudSync.refreshStatus()
+                    await cloudSync.checkOnboarding(snapshot: store.snapshot)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
                     openSettings()
@@ -59,6 +64,7 @@ struct ClaudeSwapWidgetApp: App {
                 .environmentObject(loginCoordinator)
                 .environmentObject(verifyCoordinator)
                 .environmentObject(webFallback)
+                .environmentObject(cloudSync)
         }
     }
 }

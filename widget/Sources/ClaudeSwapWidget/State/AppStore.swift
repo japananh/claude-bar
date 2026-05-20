@@ -18,6 +18,7 @@ final class AppStore: ObservableObject {
     let client = CswClient()
     let settings = AppSettings.shared
     let autoSwap: AutoSwapStateMachine
+    var cloudSync: CloudSyncCoordinator?
 
     private var refreshTask: Task<Void, Never>?
 
@@ -131,6 +132,7 @@ final class AppStore: ObservableObject {
         do {
             let res = try await client.add(nickname: nickname)
             await refreshNow()
+            await autoPushCloud()
             return res
         } catch {
             lastError = error.localizedDescription
@@ -151,8 +153,17 @@ final class AppStore: ObservableObject {
         do {
             try await client.remove(num)
             await refreshNow()
+            await autoPushCloud()
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    // MARK: - Cloud sync helpers
+
+    private func autoPushCloud() async {
+        guard let cloud = cloudSync,
+              let pass = cloud.loadPassphrase() else { return }
+        await cloud.push(passphrase: pass)
     }
 }
