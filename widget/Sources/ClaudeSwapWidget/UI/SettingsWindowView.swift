@@ -6,6 +6,10 @@ struct SettingsWindowView: View {
     @EnvironmentObject var loginCoordinator: LoginCoordinator
     @EnvironmentObject var verifyCoordinator: VerifyCoordinator
     @EnvironmentObject var webFallback: WebFallbackCoordinator
+    @EnvironmentObject var cloudSync: CloudSyncCoordinator
+    @State private var showPassphraseEntry = false
+    @State private var passphraseField = ""
+    @State private var passphraseError: String?
     @State private var axGranted = IDEReloader.isAccessibilityGranted
     @State private var ideTestResult: String = ""
     @State private var ideTestRunning = false
@@ -185,6 +189,56 @@ struct SettingsWindowView: View {
 
     private var diagnosticsTab: some View {
         SettingsPage {
+            SettingsGroup("iCloud Sync", subtitle: "Encrypt and store accounts in iCloud Drive. Restore on any Mac with the same Apple ID and iCloud Drive enabled.") {
+                if let status = cloudSync.status, status.exists {
+                    HStack(spacing: 6) {
+                        badge("BUNDLE FOUND", color: .green)
+                        if let pushed = status.pushedAt {
+                            Text("Last pushed \(relativeDate(pushed))")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                } else {
+                    badge("NOT SET UP", color: .secondary)
+                }
+                if let err = cloudSync.lastError {
+                    Text(err).font(.caption).foregroundColor(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 8) {
+                    Button {
+                        passphraseField = cloudSync.loadPassphrase() ?? ""
+                        passphraseError = nil
+                        cloudSync.passphraseIntent = .push
+                        showPassphraseEntry = true
+                    } label: {
+                        Label(cloudSync.status?.exists == true ? "Push update" : "Enable sync",
+                              systemImage: "icloud.and.arrow.up")
+                    }
+                    .buttonStyle(.borderedProminent).disabled(cloudSync.isBusy)
+
+                    if cloudSync.status?.exists == true {
+                        Button {
+                            passphraseField = cloudSync.loadPassphrase() ?? ""
+                            passphraseError = nil
+                            cloudSync.passphraseIntent = .pull
+                            showPassphraseEntry = true
+                        } label: {
+                            Label("Restore", systemImage: "icloud.and.arrow.down")
+                        }
+                        .buttonStyle(.bordered).disabled(cloudSync.isBusy)
+
+                        Button("Forget", role: .destructive) {
+                            Task { await cloudSync.forget() }
+                        }
+                        .buttonStyle(.borderless).disabled(cloudSync.isBusy)
+                    }
+                }
+            }
+            .sheet(isPresented: $showPassphraseEntry) {
+                passphraseSheet
+            }
+
             SettingsGroup("IDE reload test", subtitle: "Runs the full reload flow now so you can see exactly what happens.") {
                 Button {
                     ideTestRunning = true
@@ -382,6 +436,58 @@ struct SettingsWindowView: View {
             .padding(.vertical, 2)
             .background(color)
             .clipShape(Capsule())
+    }
+
+    // MARK: - Passphrase sheet
+
+    private var passphraseSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(cloudSync.passphraseIntent == .pull ? "Restore from iCloud" : "iCloud Sync Passphrase")
+                .font(.headline)
+            Text(cloudSync.passphraseIntent == .pull
+                 ? "Enter the passphrase you used on your other Mac."
+                 : "Choose a passphrase to encrypt your accounts. You will need it on any new Mac.")
+                .font(.caption).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            SecureField("Passphrase", text: $passphraseField)
+                .textFieldStyle(.roundedBorder)
+
+            if let err = passphraseError {
+                Text(err).font(.caption).foregroundColor(.red)
+            }
+
+            HStack {
+                Button("Cancel") { showPassphraseEntry = false }.buttonStyle(.bordered)
+                Spacer()
+                Button(cloudSync.passphraseIntent == .pull ? "Restore" : "Save & Push") {
+                    guard !passphraseField.isEmpty else {
+                        passphraseError = "Passphrase cannot be empty."
+                        return
+                    }
+                    showPassphraseEntry = false
+                    Task {
+                        if cloudSync.passphraseIntent == .pull {
+                            await cloudSync.pull(passphrase: passphraseField)
+                            await store.refreshNow()
+                        } else {
+                            await cloudSync.push(passphrase: passphraseField)
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(passphraseField.isEmpty)
+            }
+        }
+        .padding(24).frame(width: 360)
+    }
+
+    private func relativeDate(_ d: Date) -> String {
+        let secs = Int(Date().timeIntervalSince(d))
+        if secs < 60 { return "just now" }
+        if secs < 3600 { return "\(secs / 60)m ago" }
+        if secs < 86400 { return "\(secs / 3600)h ago" }
+        return "\(secs / 86400)d ago"
     }
 }
 

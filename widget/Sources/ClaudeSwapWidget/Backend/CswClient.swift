@@ -76,6 +76,63 @@ actor CswClient {
         _ = try await runRaw(["refresh-tokens", "--json"])
     }
 
+    // MARK: - Cloud sync
+
+    struct CloudStatusDTO: Codable {
+        let exists: Bool
+        let path: String
+        let pushedAt: Date?
+        let sizeKb: Int?
+    }
+
+    func cloudStatus() async throws -> CloudStatusDTO {
+        try await run(["cloud", "status", "--json"], decode: CloudStatusDTO.self)
+    }
+
+    func cloudPush(passphrase: String) async throws {
+        try await runWithPassphrase(["cloud", "push", "--json"], passphrase: passphrase)
+    }
+
+    func cloudPull(passphrase: String) async throws {
+        try await runWithPassphrase(["cloud", "pull", "--json"], passphrase: passphrase)
+    }
+
+    func cloudForget() async throws {
+        _ = try await runRaw(["cloud", "forget", "--json"])
+    }
+
+    private func runWithPassphrase(_ args: [String], passphrase: String) async throws {
+        guard let bin = CswBinary.resolve() else { throw CswError.binaryNotFound }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            let task = Process()
+            task.executableURL = bin
+            task.arguments = args
+            let stdin  = Pipe()
+            let stdout = Pipe()
+            let stderr = Pipe()
+            task.standardInput  = stdin
+            task.standardOutput = stdout
+            task.standardError  = stderr
+            task.terminationHandler = { proc in
+                let errData = (try? stderr.fileHandleForReading.readToEnd()) ?? Data()
+                if proc.terminationStatus == 0 {
+                    cont.resume()
+                } else {
+                    let msg = String(data: errData, encoding: .utf8) ?? ""
+                    cont.resume(throwing: CswError.nonZeroExit(code: proc.terminationStatus, stderr: msg))
+                }
+            }
+            do {
+                try task.run()
+                let line = (passphrase + "\n").data(using: .utf8)!
+                stdin.fileHandleForWriting.write(line)
+                stdin.fileHandleForWriting.closeFile()
+            } catch {
+                cont.resume(throwing: error)
+            }
+        }
+    }
+
     private func run<T: Decodable>(_ args: [String], decode: T.Type) async throws -> T {
         let raw = try await runRaw(args)
         do {
