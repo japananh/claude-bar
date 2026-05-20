@@ -64,6 +64,33 @@ Enable **Auto-reload IDE after swap** in Settings → General, then click **Gran
 
 ---
 
+## Update
+
+```bash
+brew upgrade --cask claude-bar
+```
+
+Or manually: download the latest `ClaudeBar.zip` from [Releases](https://github.com/ncthanhngo/claude-bar/releases/latest), unzip, and replace the existing app in `/Applications`.
+
+---
+
+## Uninstall
+
+```bash
+brew uninstall --cask claude-bar
+```
+
+To also remove all data (accounts, settings, claude-watch script):
+
+```bash
+rm -rf "$HOME/Library/Application Support/claude-bar"
+defaults delete dev.ncthanhngo.claude-bar 2>/dev/null
+# Remove shell alias if you added it
+sed -i '' '/alias claude="claude-watch"/d' ~/.zshrc
+```
+
+---
+
 ## Build from source
 
 Requirements: macOS 14+, Xcode 15+, Go 1.23+
