@@ -45,8 +45,8 @@ struct AccountRowView: View {
             if !hovering { NSCursor.pop() }
         }
         .contextMenu { contextMenuBody }
-        .alert("Claude đang chạy", isPresented: $showingBusyAlert) {
-            Button("Huỷ", role: .cancel) {}
+        .alert("Claude is running", isPresented: $showingBusyAlert) {
+            Button("Cancel", role: .cancel) {}
             Button("Force switch", role: .destructive) { doSwap() }
         } message: {
             Text(busyAlertMessage)
@@ -226,6 +226,6 @@ struct AccountRowView: View {
 
     private var busyAlertMessage: String {
         let lines = busySessions.map { "• \($0.typeLabel): \($0.locationLabel)" }
-        return "Switch sẽ làm mất session hiện tại.\n\n" + lines.joined(separator: "\n")
+        return "Switching now will interrupt the current session.\n\n" + lines.joined(separator: "\n")
     }
 }

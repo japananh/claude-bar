@@ -104,24 +104,24 @@ final class AutoSwapStateMachine: ObservableObject {
 
     private func notifyPending(to target: AccountViewDTO, activePct: Int) async {
         await postNotification(
-            title: "⏳ Sắp auto-swap (\(activePct)% đã dùng)",
-            body: "Sẽ chuyển sang \(target.account.displayName) khi claude kết thúc.",
+            title: "Auto-swap pending (\(activePct)% used)",
+            body: "Will switch to \(target.account.displayName) when claude exits.",
             id: "csw.pending"
         )
     }
 
     private func notifySwapped(to target: AccountViewDTO) async {
         await postNotification(
-            title: "✅ Đã chuyển sang \(target.account.displayName)",
-            body: "Mở lại claude để dùng credentials mới.",
+            title: "Switched to \(target.account.displayName)",
+            body: "Restart claude to use the new account.",
             id: "csw.swapped"
         )
     }
 
     private func notifyAllExhausted() async {
         await postNotification(
-            title: "⚠️ Tất cả tài khoản đã hết quota",
-            body: "Không có tài khoản nào dưới ngưỡng. Sẽ thử lại sau 10 phút.",
+            title: "All accounts above threshold",
+            body: "No account available to swap to. Will retry in 10 minutes.",
             id: "csw.exhausted"
         )
     }
