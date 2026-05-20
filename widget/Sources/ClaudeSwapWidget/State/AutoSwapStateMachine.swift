@@ -97,9 +97,17 @@ final class AutoSwapStateMachine: ObservableObject {
         snap.accounts
             .filter { !$0.isActive }
             .filter { ($0.usage?.fiveHour?.percentInt ?? 100) < threshold }
-            .min { a, b in
-                (a.usage?.fiveHour?.percentInt ?? 100) < (b.usage?.fiveHour?.percentInt ?? 100)
+            .sorted { a, b in
+                // 1. Higher subscription tier first (Max 200 > Max 100 > Pro > free)
+                if a.subscriptionTier != b.subscriptionTier {
+                    return a.subscriptionTier > b.subscriptionTier
+                }
+                // 2. Within same tier, most remaining quota (lowest % used)
+                let pctA = a.usage?.fiveHour?.percentInt ?? 100
+                let pctB = b.usage?.fiveHour?.percentInt ?? 100
+                return pctA < pctB
             }
+            .first
     }
 
     private func notifyPending(to target: AccountViewDTO, activePct: Int) async {

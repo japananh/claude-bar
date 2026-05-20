@@ -72,8 +72,18 @@ struct AccountViewDTO: Codable, Hashable, Identifiable {
     let isActive: Bool
     let usage: UsageDTO?
     let error: String?
+    let subscriptionType: String?
 
     var id: Int { account.number }
+
+    /// Tier for auto-swap selection: Max 200 = 3, Max 100 = 2, Pro = 1, other = 0.
+    var subscriptionTier: Int {
+        guard let t = subscriptionType?.lowercased() else { return 0 }
+        if t.contains("200") { return 3 }
+        if t.contains("100") { return 2 }
+        if t.contains("pro") { return 1 }
+        return 0
+    }
 }
 
 /// Mirrors backend ListAccountsResult.
