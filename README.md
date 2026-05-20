@@ -78,14 +78,16 @@ make install      # builds and copies to /Applications/ClaudeBar.app
 
 ## How auto-swap works
 
-1. Polls usage every N seconds (adaptive — faster as you approach the threshold)
-2. Active 5h usage ≥ threshold → notification **"Sắp auto-swap (X%)"**
-3. Waits until no `claude` sessions are busy
-4. Swaps to the inactive account with the lowest 5-hour usage
-5. Notification **"Đã chuyển sang [account]"**
-6. Triggers IDE reload and CLI restart if enabled
+1. **Polls usage** every N seconds with adaptive frequency — faster as you approach the threshold
+2. Active 5h usage ≥ threshold → notification **"Auto-swap pending (X% used)"** — you are warned before anything happens
+3. **Waits** until no `claude` sessions are busy (`safeToSwap = true`) — Claude Bar never interrupts a running session
+4. **Swaps** to the inactive account with the lowest 5-hour usage
+5. Notification **"Switched to [account]"** — confirmation after the swap completes
+6. Triggers **IDE reload** (VSCode/Cursor/Windsurf) and **CLI restart** (`claude-watch`) if those options are enabled in Settings
 
-> The 7-day window is shown for reference only. Auto-swap uses the **5-hour** window exclusively.
+If all inactive accounts are also above the threshold → notification **"All accounts above threshold"**, retry in 10 minutes.
+
+> Auto-swap is driven by the **5-hour** window exclusively. The 7-day window is displayed for reference but does not affect swap decisions.
 
 ---
 
