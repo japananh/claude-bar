@@ -192,7 +192,6 @@ private struct AutoSwapSection: View {
 // MARK: - Footer
 
 private struct FooterActions: View {
-    @Environment(\.openSettings) private var openSettings
     @ObservedObject private var settings = AppSettings.shared
 
     @ViewBuilder private var themeIcon: some View {
@@ -214,19 +213,7 @@ private struct FooterActions: View {
     var body: some View {
         HStack(spacing: 2) {
             Button {
-                openSettings()
-                // Settings must appear ABOVE the MenuBarExtra popup (.statusBar = 25).
-                // We poll briefly until the window exists, then raise its level.
-                let abovePopup = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
-                for _ in 0..<5 {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        for w in NSApp.windows where w.title.contains("Settings") || w.title.contains("Preferences") {
-                            w.level = abovePopup
-                            w.makeKeyAndOrderFront(nil)
-                            NSApp.activate(ignoringOtherApps: true)
-                        }
-                    }
-                }
+                NotificationCenter.default.post(name: .openSettings, object: nil)
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 13))
